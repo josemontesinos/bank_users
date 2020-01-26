@@ -39,8 +39,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'apps.users'
+    'users'
 ]
+
+AUTH_USER_MODEL = 'users.User'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -78,9 +80,20 @@ WSGI_APPLICATION = 'wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    }
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'bank',
+        'USER': 'bankdbuser',
+        'PASSWORD': 'bankdbpw',
+        'HOST': '172.19.2.1',
+        'PORT': '5433',
+        'OPTIONS': {
+            'options': (
+                '-c search_path=django,accounts'
+            ),
+            'application_name': 'Bank Users'
+        },
+        'ATOMIC_REQUESTS': True,
+    },
 }
 
 
@@ -133,6 +146,7 @@ TEST_RUNNER = 'tests.runner.PostgresSchemaTestRunner'
 
 LOGGING_CONFIG = None
 LOGGING_PATH = os.path.join(os.path.dirname(BASE_DIR), 'logs')
+os.makedirs(LOGGING_PATH, exist_ok=True)
 
 LOGGING = {
     'version': 1,

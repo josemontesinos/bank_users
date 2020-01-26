@@ -206,3 +206,6 @@ tmp/
 
 # IDEA directory
 .idea/
+
+# Log directories
+logs/
