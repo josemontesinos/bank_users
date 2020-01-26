@@ -1,0 +1,22 @@
+version: '3.5'
+
+services:
+  database:
+    image: postgres:${POSTGRES_DB_VERSION}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    expose:
+      - "${POSTGRES_DB_PORT}"
+    ports:
+      - "${POSTGRES_DB_EXT_PORT}:${POSTGRES_DB_PORT}"
+    networks:
+      - default
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.19.2.0/24
+
+volumes:
+  db-data: ~
