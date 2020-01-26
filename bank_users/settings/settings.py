@@ -124,6 +124,11 @@ STATIC_ROOT = os.path.join(os.path.dirname(BASE_DIR), 'static')
 STATIC_URL = '/static/'
 
 
+# Custom test runner for PostgreSQL database
+
+TEST_RUNNER = 'tests.runner.PostgresSchemaTestRunner'
+
+
 # Logging configuration
 
 LOGGING_CONFIG = None
