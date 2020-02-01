@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.core.validators import MinLengthValidator
 from localflavor.generic.models import IBANField
 
 SCHEMA = 'accounts'
@@ -26,6 +27,18 @@ class User(AbstractUser):
         (CROWN, 'Swedish Crown')
     )
 
+    first_name = models.CharField(
+        max_length=30,
+        blank=False,
+        validators=[MinLengthValidator(1)],
+        help_text="This user's first name."
+    )
+    last_name = models.CharField(
+        max_length=150,
+        blank=False,
+        validators=[MinLengthValidator(1)],
+        help_text="This user's last name."
+    )
     iban = IBANField(
         unique=True,
         help_text='IBAN code to identify this account.'
@@ -51,10 +64,12 @@ class User(AbstractUser):
         help_text='Time when this account was last updated.'
     )
 
-    objects = models.Manager()
-
     class Meta:
         db_table = DB_TABLE_PREFIX + 'user'
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.iban
