@@ -72,4 +72,4 @@ class User(AbstractUser):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.iban
+        return f'{self.get_full_name()}: {self.iban}'
