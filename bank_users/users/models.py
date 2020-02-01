@@ -67,9 +67,5 @@ class User(AbstractUser):
     class Meta:
         db_table = DB_TABLE_PREFIX + 'user'
 
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-
     def __str__(self):
         return f'{self.get_full_name()}: {self.iban}'

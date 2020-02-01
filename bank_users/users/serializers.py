@@ -15,7 +15,7 @@ class UserSerializer(serializers.ModelSerializer):
             'last_name',
             'email',
             'iban',
-            'balanace',
+            'balance',
             'currency',
             'create_ts',
             'update_ts'
