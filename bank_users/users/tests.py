@@ -7,11 +7,12 @@ from django.core.validators import ValidationError
 from django.urls import reverse
 from rest_framework.test import APIClient
 from freezegun import freeze_time
-
-from users.models import User
+from guardian.shortcuts import assign_perm, remove_perm
 
 
 logging.disable(logging.CRITICAL)
+
+User = get_user_model()
 
 
 class BaseTestCase(TestCase):
@@ -40,11 +41,19 @@ class BaseTestCase(TestCase):
         cls.SECOND_USER_REQUIRED_DATA = {
             **{key: cls.USER_DATA[key] + '2' for key in cls.REQUIRED_FIELDS if key != 'iban'},
             **{'iban': cls.IBANS[1]}}
-        cls.previous_users_pks = get_user_model().objects.values_list('pk', flat=True)
-        cls.user_queryset = get_user_model().objects.exclude(pk__in=list(cls.previous_users_pks))
+        cls.admin = User.objects.create(
+            username='admin',
+            password='admin',
+            first_name='admin',
+            last_name='admin',
+            is_staff=True
+        )
+        cls.previous_users_pks = User.objects.values_list('pk', flat=True)
+        cls.user_queryset = User.objects.exclude(pk__in=list(cls.previous_users_pks))
 
     def setUp(self):
         self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
 
     def tearDown(self):
         del self.client
@@ -54,28 +63,28 @@ class UserModelTestCase(BaseTestCase):
 
     def tearDown(self):
         self.user_queryset.delete()
-        self.assertEqual(get_user_model().objects.count(), len(self.previous_users_pks))
+        self.assertEqual(User.objects.count(), len(self.previous_users_pks))
 
     def test_user_creation_with_default_values(self):
         self.assertEqual(self.user_queryset.count(), 0)
         with freeze_time(self.NOW):
-            user = get_user_model().objects.create(**self.REQUIRED_DATA)
+            user = User.objects.create(**self.REQUIRED_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
-        self.assertIsInstance(user, get_user_model())
+        self.assertIsInstance(user, User)
         for attr in self.REQUIRED_FIELDS:
             self.assertEqual(getattr(user, attr), self.USER_DATA[attr])
         self.assertEqual(user.email, '')
         self.assertEqual(user.balance, 0)
-        self.assertEqual(user.currency, get_user_model().EURO)
+        self.assertEqual(user.currency, User.EURO)
         self.assertEqual(user.create_ts, self.NOW)
         self.assertEqual(user.update_ts, self.NOW)
 
     def test_user_creation_with_specific_values(self):
         self.assertEqual(self.user_queryset.count(), 0)
         with freeze_time(self.NOW):
-            user = get_user_model().objects.create(**self.USER_DATA)
+            user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
-        self.assertIsInstance(user, get_user_model())
+        self.assertIsInstance(user, User)
         for attr in self.USER_DATA:
             self.assertEqual(getattr(user, attr), self.USER_DATA[attr])
         self.assertEqual(user.create_ts, self.NOW)
@@ -86,20 +95,20 @@ class UserModelTestCase(BaseTestCase):
         user_data.pop('username')
         self.assertNotIn('username', user_data)
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_empty_username(self):
         user_data = {**self.REQUIRED_DATA, **{'username': ''}}
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_repeated_username(self):
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**{**self.SECOND_USER_REQUIRED_DATA, **{'username': user.username}})
+            user = User(**{**self.SECOND_USER_REQUIRED_DATA, **{'username': user.username}})
             user.full_clean()
 
     def test_password_requirement(self):
@@ -107,20 +116,20 @@ class UserModelTestCase(BaseTestCase):
         user_data.pop('password')
         self.assertNotIn('password', user_data)
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_empty_password(self):
         user_data = {**self.REQUIRED_DATA, **{'password': ''}}
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_repeated_password(self):
         self.assertEqual(self.user_queryset.count(), 0)
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
-        new_user = get_user_model().objects.create(**{**self.SECOND_USER_REQUIRED_DATA, **{'password': user.password}})
+        new_user = User.objects.create(**{**self.SECOND_USER_REQUIRED_DATA, **{'password': user.password}})
         self.assertEqual(self.user_queryset.count(), 2)
         self.assertEqual(user.password, new_user.password)
 
@@ -129,20 +138,20 @@ class UserModelTestCase(BaseTestCase):
         user_data.pop('first_name')
         self.assertNotIn('first_name', user_data)
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_empty_first_name(self):
         user_data = {**self.REQUIRED_DATA, **{'first_name': ''}}
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_repeated_first_name(self):
         self.assertEqual(self.user_queryset.count(), 0)
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
-        new_user = get_user_model().objects.create(
+        new_user = User.objects.create(
             **{**self.SECOND_USER_REQUIRED_DATA, **{'first_name': user.first_name}}
         )
         self.assertEqual(self.user_queryset.count(), 2)
@@ -153,20 +162,20 @@ class UserModelTestCase(BaseTestCase):
         user_data.pop('last_name')
         self.assertNotIn('last_name', user_data)
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_empty_last_name(self):
         user_data = {**self.REQUIRED_DATA, **{'last_name': ''}}
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_repeated_last_name(self):
         self.assertEqual(self.user_queryset.count(), 0)
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
-        new_user = get_user_model().objects.create(
+        new_user = User.objects.create(
             **{**self.SECOND_USER_REQUIRED_DATA, **{'last_name': user.last_name}}
         )
         self.assertEqual(self.user_queryset.count(), 2)
@@ -177,37 +186,44 @@ class UserModelTestCase(BaseTestCase):
         user_data.pop('iban')
         self.assertNotIn('iban', user_data)
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
+
+    def test_iban_requirement_for_staff_user(self):
+        user_data = {**self.REQUIRED_DATA, **{'is_staff': True}}
+        user_data.pop('iban')
+        self.assertNotIn('iban', user_data)
+        user = User(**user_data)
+        user.full_clean()
 
     def test_empty_iban(self):
         user_data = {**self.REQUIRED_DATA, **{'iban': ''}}
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_repeated_iban(self):
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**{**self.SECOND_USER_REQUIRED_DATA, **{'iban': user.iban}})
+            user = User(**{**self.SECOND_USER_REQUIRED_DATA, **{'iban': user.iban}})
             user.full_clean()
 
     def test_iban_validation(self):
         user_data = {**self.REQUIRED_DATA, **{'iban': 'This is a wrong IBAN'}}
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_currency_validation(self):
-        invalid_currency = max(currency[0] for currency in get_user_model().CURRENCIES) + 1
+        invalid_currency = max(currency[0] for currency in User.CURRENCIES) + 1
         user_data = {**self.REQUIRED_DATA, **{'currency': invalid_currency}}
         with self.assertRaises(ValidationError):
-            user = get_user_model()(**user_data)
+            user = User(**user_data)
             user.full_clean()
 
     def test_representation(self):
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(str(user), f'{user.first_name} {user.last_name}: {user.iban}')
 
 
@@ -234,7 +250,7 @@ class CreateUserAPIEndpointTestCase(BaseTestCase):
             else:
                 self.assertEqual(response.data[field], self.USER_DATA[field])
         self.assertEqual(response.data['balance'], 0)
-        self.assertEqual(response.data['currency'], get_user_model().CURRENCIES[0][1])
+        self.assertEqual(response.data['currency'], User.CURRENCIES[0][1])
         self.assertEqual(response.data['create_ts'], self.NOW.isoformat().replace('+00:00', 'Z'))
         self.assertEqual(response.data['update_ts'], self.NOW.isoformat().replace('+00:00', 'Z'))
 
@@ -249,7 +265,7 @@ class CreateUserAPIEndpointTestCase(BaseTestCase):
             if field == 'password':
                 self.assertTrue(user.password)
             elif field == 'currency':
-                self.assertEqual(response.data['currency'], get_user_model().CURRENCIES[2][1])
+                self.assertEqual(response.data['currency'], User.CURRENCIES[2][1])
             elif field in ('create_ts', 'update_ts'):
                 self.assertEqual(response.data[field], self.NOW.isoformat().replace('+00:00', 'Z'))
             else:
@@ -279,7 +295,7 @@ class CreateUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(self.user_queryset.count(), 0)
 
     def test_create_user_with_repeated_username(self):
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
         user_data = {**self.SECOND_USER_REQUIRED_DATA, **{'username': user.username}}
         response = self.client.post(self.URL, data=user_data, format='json')
@@ -304,7 +320,7 @@ class CreateUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(self.user_queryset.count(), 0)
 
     def test_create_user_with_repeated_password(self):
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
         user_data = {**self.SECOND_USER_REQUIRED_DATA, **{'password': user.password}}
         response = self.client.post(self.URL, data=user_data, format='json')
@@ -329,7 +345,7 @@ class CreateUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(self.user_queryset.count(), 0)
 
     def test_create_user_with_repeated_first_name(self):
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
         user_data = {**self.SECOND_USER_REQUIRED_DATA, **{'first_name': user.first_name}}
         response = self.client.post(self.URL, data=user_data, format='json')
@@ -354,7 +370,7 @@ class CreateUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(self.user_queryset.count(), 0)
 
     def test_create_user_with_repeated_last_name(self):
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
         user_data = {**self.SECOND_USER_REQUIRED_DATA, **{'last_name': user.last_name}}
         response = self.client.post(self.URL, data=user_data, format='json')
@@ -379,7 +395,7 @@ class CreateUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(self.user_queryset.count(), 0)
 
     def test_create_user_with_repeated_iban(self):
-        user = get_user_model().objects.create(**self.USER_DATA)
+        user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
         user_data = {**self.SECOND_USER_REQUIRED_DATA, **{'iban': user.iban}}
         response = self.client.post(self.URL, data=user_data, format='json')
@@ -395,6 +411,19 @@ class CreateUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.user_queryset.count(), 0)
 
+    def test_create_user_without_authentication(self):
+        response = APIClient().post(self.URL, data=self.USER_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.user_queryset.count(), 0)
+
+    def test_create_user_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.post(self.URL, data=self.USER_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.user_queryset.exclude(pk=user.pk).count(), 0)
+
 
 class ListUserAPIEndpointTestCase(BaseTestCase):
 
@@ -406,8 +435,8 @@ class ListUserAPIEndpointTestCase(BaseTestCase):
     def test_get_user_list(self):
         with freeze_time(self.NOW):
             users = (
-                get_user_model().objects.create(**self.REQUIRED_DATA),
-                get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA),
+                User.objects.create(**self.REQUIRED_DATA),
+                User.objects.create(**self.SECOND_USER_REQUIRED_DATA),
             )
         self.assertEqual(self.user_queryset.count(), len(users))
         response = self.client.get(self.URL)
@@ -429,22 +458,33 @@ class ListUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 0)
 
+    def test_get_user_list_without_authentication(self):
+        response = APIClient().get(self.URL)
+        self.assertEqual(response.status_code, 403)
+
+    def test_get_user_list_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.get(self.URL)
+        self.assertEqual(response.status_code, 403)
+
 
 class RetrieveUserAPIEndpointTestCase(BaseTestCase):
 
     def setUp(self):
         super().setUp()
         with freeze_time(self.NOW):
-            self.user = get_user_model().objects.create(**self.REQUIRED_DATA)
+            self.user = User.objects.create(**self.REQUIRED_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
+        self.url = reverse('user-detail', kwargs={'pk': self.user.pk})
 
     def tearDown(self):
         self.user_queryset.delete()
         self.assertEqual(self.user_queryset.count(), 0)
 
     def test_retrieve_user(self):
-        url = reverse('user-detail', kwargs={'pk': self.user.pk})
-        response = self.client.get(url)
+        response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertNotIn('password', response.data)
         for field in response.data:
@@ -460,14 +500,27 @@ class RetrieveUserAPIEndpointTestCase(BaseTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
 
+    def test_retrieve_user_without_authentication(self):
+        response = APIClient().get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_retrieve_user_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
 
 class DeleteUserAPIEndpointTestCase(BaseTestCase):
 
     def setUp(self):
         super().setUp()
         with freeze_time(self.NOW):
-            self.user = get_user_model().objects.create(**self.REQUIRED_DATA)
+            self.user = User.objects.create(**self.REQUIRED_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
+        assign_perm('users.delete_user', self.admin, self.user)
+        self.assertTrue(self.admin.has_perm('users.delete_user', self.user))
         self.url = reverse('user-detail', kwargs={'pk': self.user.pk})
 
     def tearDown(self):
@@ -485,14 +538,38 @@ class DeleteUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(self.user_queryset.count(), 1)
 
+    def test_delete_user_without_permissions(self):
+        remove_perm('users.delete_user', self.admin, self.user)
+        self.assertFalse(self.admin.has_perm('users.delete_user', self.user))
+        response = self.client.delete(self.url)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.user_queryset.count(), 1)
+        assign_perm('users.delete_user', self.admin, self.user)
+        self.assertTrue(self.admin.has_perm('users.delete_user', self.user))
+
+    def test_delete_user_without_authentication(self):
+        response = APIClient().delete(self.url)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.user_queryset.count(), 1)
+
+    def test_delete_user_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.user_queryset.exclude(pk=user.pk).count(), 1)
+
 
 class UpdateUserAPIEndpointTestCase(BaseTestCase):
 
     def setUp(self):
         super().setUp()
         with freeze_time(self.NOW):
-            self.user = get_user_model().objects.create(**self.USER_DATA)
+            self.user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
+        assign_perm('users.change_user', self.admin, self.user)
+        self.assertTrue(self.admin.has_perm('users.change_user', self.user))
         self.url = reverse('user-detail', kwargs={'pk': self.user.pk})
 
     def tearDown(self):
@@ -518,7 +595,7 @@ class UpdateUserAPIEndpointTestCase(BaseTestCase):
             self.assertEqual(getattr(user, field), self.SECOND_USER_REQUIRED_DATA[field])
             self.assertNotEqual(response.data[field], self.USER_DATA[field])
         self.assertEqual(response.data['balance'], self.USER_DATA['balance'])
-        self.assertEqual(response.data['currency'], get_user_model().CURRENCIES[2][1])
+        self.assertEqual(response.data['currency'], User.CURRENCIES[2][1])
         self.assertEqual(response.data['create_ts'], self.NOW.isoformat().replace('+00:00', 'Z'))
         self.assertEqual(response.data['update_ts'], (now_but_later.isoformat().replace('+00:00', 'Z')))
         self.assertNotEqual(self.user.password, user.password)
@@ -553,7 +630,7 @@ class UpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
 
     def test_update_user_with_repeated_username(self):
-        second_user = get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        second_user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
         user_data = {**self.USER_DATA, **{'username': second_user.username}}
         response = self.client.put(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 400)
@@ -573,7 +650,7 @@ class UpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
 
     def test_update_user_with_repeated_password(self):
-        second_user = get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        second_user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
         user_data = {**self.USER_DATA, **{'password': second_user.password}}
         response = self.client.put(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 200)
@@ -593,7 +670,7 @@ class UpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
 
     def test_update_user_with_repeated_first_name(self):
-        second_user = get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        second_user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
         user_data = {**self.USER_DATA, **{'first_name': second_user.first_name}}
         response = self.client.put(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 200)
@@ -614,7 +691,7 @@ class UpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
 
     def test_update_user_with_repeated_last_name(self):
-        second_user = get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        second_user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
         user_data = {**self.USER_DATA, **{'last_name': second_user.last_name}}
         response = self.client.put(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 200)
@@ -635,7 +712,7 @@ class UpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
 
     def test_update_user_with_repeated_iban(self):
-        second_user = get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        second_user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
         user_data = {**self.USER_DATA, **{'iban': second_user.iban}}
         response = self.client.put(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 400)
@@ -648,14 +725,38 @@ class UpdateUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(response.status_code, 400)
         self.check_user_did_not_change()
 
+    def test_update_user_without_permissions(self):
+        remove_perm('users.change_user', self.admin, self.user)
+        self.assertFalse(self.admin.has_perm('users.change_user', self.user))
+        response = self.client.put(self.url, data=self.SECOND_USER_REQUIRED_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.check_user_did_not_change()
+        assign_perm('users.change_user', self.admin, self.user)
+        self.assertTrue(self.admin.has_perm('users.change_user', self.user))
+
+    def test_update_user_without_authentication(self):
+        response = APIClient().put(self.url, data=self.SECOND_USER_REQUIRED_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.check_user_did_not_change()
+
+    def test_update_user_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.put(self.url, data=self.SECOND_USER_REQUIRED_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.check_user_did_not_change()
+
 
 class PartialUpdateUserAPIEndpointTestCase(BaseTestCase):
 
     def setUp(self):
         super().setUp()
         with freeze_time(self.NOW):
-            self.user = get_user_model().objects.create(**self.USER_DATA)
+            self.user = User.objects.create(**self.USER_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
+        assign_perm('users.change_user', self.admin, self.user)
+        self.assertTrue(self.admin.has_perm('users.change_user', self.user))
         self.url = reverse('user-detail', kwargs={'pk': self.user.pk})
 
     def tearDown(self):
@@ -682,7 +783,7 @@ class PartialUpdateUserAPIEndpointTestCase(BaseTestCase):
             self.assertEqual(getattr(user, field), self.SECOND_USER_REQUIRED_DATA[field])
             self.assertNotEqual(response.data[field], self.USER_DATA[field])
         self.assertEqual(response.data['balance'], self.USER_DATA['balance'])
-        self.assertEqual(response.data['currency'], get_user_model().CURRENCIES[2][1])
+        self.assertEqual(response.data['currency'], User.CURRENCIES[2][1])
         self.assertEqual(response.data['create_ts'], self.NOW.isoformat().replace('+00:00', 'Z'))
         self.assertEqual(response.data['update_ts'], (now_but_later.isoformat().replace('+00:00', 'Z')))
         self.assertNotEqual(self.user.password, user.password)
@@ -719,7 +820,7 @@ class PartialUpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
 
     def test_partial_update_user_with_repeated_username(self):
-        second_user = get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        second_user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
         user_data = {**self.USER_DATA, **{'username': second_user.username}}
         response = self.client.patch(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 400)
@@ -741,7 +842,7 @@ class PartialUpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
 
     def test_partial_update_user_with_repeated_password(self):
-        second_user = get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        second_user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
         user_data = {**self.USER_DATA, **{'password': second_user.password}}
         response = self.client.patch(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 200)
@@ -763,7 +864,7 @@ class PartialUpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
 
     def test_partial_update_user_with_repeated_first_name(self):
-        second_user = get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        second_user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
         user_data = {**self.USER_DATA, **{'first_name': second_user.first_name}}
         response = self.client.patch(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 200)
@@ -786,7 +887,7 @@ class PartialUpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
 
     def test_partial_update_user_with_repeated_last_name(self):
-        second_user = get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        second_user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
         user_data = {**self.USER_DATA, **{'last_name': second_user.last_name}}
         response = self.client.patch(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 200)
@@ -809,7 +910,7 @@ class PartialUpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
 
     def test_partial_update_user_with_repeated_iban(self):
-        second_user = get_user_model().objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        second_user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
         user_data = {**self.USER_DATA, **{'iban': second_user.iban}}
         response = self.client.patch(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 400)
@@ -820,4 +921,26 @@ class PartialUpdateUserAPIEndpointTestCase(BaseTestCase):
         user_data = {**self.SECOND_USER_REQUIRED_DATA, **{'iban': invalid_iban}}
         response = self.client.patch(self.url, data=user_data, format='json')
         self.assertEqual(response.status_code, 400)
+        self.check_user_did_not_change()
+
+    def test_partial_update_user_without_permissions(self):
+        remove_perm('users.change_user', self.admin, self.user)
+        self.assertFalse(self.admin.has_perm('users.change_user', self.user))
+        response = self.client.patch(self.url, data=self.SECOND_USER_REQUIRED_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.check_user_did_not_change()
+        assign_perm('users.change_user', self.admin, self.user)
+        self.assertTrue(self.admin.has_perm('users.change_user', self.user))
+
+    def test_partial_update_user_without_authentication(self):
+        response = APIClient().patch(self.url, data=self.SECOND_USER_REQUIRED_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.check_user_did_not_change()
+
+    def test_partial_update_user_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.patch(self.url, data=self.SECOND_USER_REQUIRED_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
         self.check_user_did_not_change()
