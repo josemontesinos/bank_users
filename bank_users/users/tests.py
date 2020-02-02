@@ -411,6 +411,19 @@ class CreateUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.user_queryset.count(), 0)
 
+    def test_create_user_without_authentication(self):
+        response = APIClient().post(self.URL, data=self.USER_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.user_queryset.count(), 0)
+
+    def test_create_user_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.post(self.URL, data=self.USER_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.user_queryset.exclude(pk=user.pk).count(), 0)
+
 
 class ListUserAPIEndpointTestCase(BaseTestCase):
 
@@ -445,6 +458,17 @@ class ListUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 0)
 
+    def test_get_user_list_without_authentication(self):
+        response = APIClient().get(self.URL)
+        self.assertEqual(response.status_code, 403)
+
+    def test_get_user_list_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.get(self.URL)
+        self.assertEqual(response.status_code, 403)
+
 
 class RetrieveUserAPIEndpointTestCase(BaseTestCase):
 
@@ -453,14 +477,14 @@ class RetrieveUserAPIEndpointTestCase(BaseTestCase):
         with freeze_time(self.NOW):
             self.user = User.objects.create(**self.REQUIRED_DATA)
         self.assertEqual(self.user_queryset.count(), 1)
+        self.url = reverse('user-detail', kwargs={'pk': self.user.pk})
 
     def tearDown(self):
         self.user_queryset.delete()
         self.assertEqual(self.user_queryset.count(), 0)
 
     def test_retrieve_user(self):
-        url = reverse('user-detail', kwargs={'pk': self.user.pk})
-        response = self.client.get(url)
+        response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertNotIn('password', response.data)
         for field in response.data:
@@ -475,6 +499,17 @@ class RetrieveUserAPIEndpointTestCase(BaseTestCase):
         url = reverse('user-detail', kwargs={'pk': self.user.pk + 1})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
+
+    def test_retrieve_user_without_authentication(self):
+        response = APIClient().get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_retrieve_user_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.get(self.url)
+        self.assertEqual(response.status_code, 403)
 
 
 class DeleteUserAPIEndpointTestCase(BaseTestCase):
@@ -511,6 +546,19 @@ class DeleteUserAPIEndpointTestCase(BaseTestCase):
         self.assertEqual(self.user_queryset.count(), 1)
         assign_perm('users.delete_user', self.admin, self.user)
         self.assertTrue(self.admin.has_perm('users.delete_user', self.user))
+
+    def test_delete_user_without_authentication(self):
+        response = APIClient().delete(self.url)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.user_queryset.count(), 1)
+
+    def test_delete_user_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.user_queryset.exclude(pk=user.pk).count(), 1)
 
 
 class UpdateUserAPIEndpointTestCase(BaseTestCase):
@@ -685,6 +733,19 @@ class UpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
         assign_perm('users.change_user', self.admin, self.user)
         self.assertTrue(self.admin.has_perm('users.change_user', self.user))
+
+    def test_update_user_without_authentication(self):
+        response = APIClient().put(self.url, data=self.SECOND_USER_REQUIRED_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.check_user_did_not_change()
+
+    def test_update_user_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.put(self.url, data=self.SECOND_USER_REQUIRED_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.check_user_did_not_change()
 
 
 class PartialUpdateUserAPIEndpointTestCase(BaseTestCase):
@@ -870,3 +931,16 @@ class PartialUpdateUserAPIEndpointTestCase(BaseTestCase):
         self.check_user_did_not_change()
         assign_perm('users.change_user', self.admin, self.user)
         self.assertTrue(self.admin.has_perm('users.change_user', self.user))
+
+    def test_partial_update_user_without_authentication(self):
+        response = APIClient().patch(self.url, data=self.SECOND_USER_REQUIRED_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.check_user_did_not_change()
+
+    def test_partial_update_user_but_no_admin(self):
+        user = User.objects.create(**self.SECOND_USER_REQUIRED_DATA)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.patch(self.url, data=self.SECOND_USER_REQUIRED_DATA, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.check_user_did_not_change()
