@@ -1,10 +1,10 @@
-from rest_framework import serializers
+from rest_framework import serializers, validators
 from django.contrib.auth import get_user_model
 
 
 class UserSerializer(serializers.ModelSerializer):
     """
-    Serializer for the user model
+    Serializer for the user model.
     """
     class Meta:
         model = get_user_model()
@@ -22,7 +22,8 @@ class UserSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('create_ts', 'update_ts')
         extra_kwargs = {
-            'password': {'write_only': True}
+            'password': {'write_only': True},
+            'iban': {'required': True}
         }
 
     def to_representation(self, instance):
@@ -44,3 +45,8 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(password)
             instance.save()
         return instance
+
+    def validate_iban(self, value):
+        if not value:
+            raise validators.ValidationError('IBAN is required.')
+        return value

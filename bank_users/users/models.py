@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-from django.core.validators import MinLengthValidator
+from django.core.validators import MinLengthValidator, ValidationError
 from localflavor.generic.models import IBANField
 
 SCHEMA = 'accounts'
@@ -41,6 +41,8 @@ class User(AbstractUser):
     )
     iban = IBANField(
         unique=True,
+        null=True,
+        blank=True,
         help_text='IBAN code to identify this account.'
     )
     balance = models.FloatField(
@@ -66,6 +68,11 @@ class User(AbstractUser):
 
     class Meta:
         db_table = DB_TABLE_PREFIX + 'user'
+
+    def clean(self):
+        if not self.iban:
+            if not (self.is_staff or self.is_superuser):
+                raise ValidationError('IBAN field is required.')
 
     def __str__(self):
         return f'{self.get_full_name()}: {self.iban}'
