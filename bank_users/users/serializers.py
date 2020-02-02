@@ -1,5 +1,6 @@
 from rest_framework import serializers, validators
 from django.contrib.auth import get_user_model
+from guardian.shortcuts import assign_perm
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -36,6 +37,8 @@ class UserSerializer(serializers.ModelSerializer):
         user = super().create(validated_data=validated_data)
         user.set_password(password)
         user.save()
+        for permission in ('users.change_user', 'users.delete_user'):
+            assign_perm(permission, self.context['request'].user, user)
         return user
 
     def update(self, instance, validated_data):
